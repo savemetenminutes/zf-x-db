@@ -12,7 +12,7 @@
     ],
     "require": {
         "php": ">=7",
-        "zendframework/zend-db": "3.*"
+        "zendframework/zend-db": "^2"
     },
     "autoload": {
         "psr-4": {
