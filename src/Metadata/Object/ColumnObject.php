@@ -43,8 +43,19 @@ class ColumnObject extends Zf_ColumnObject
         return $this;
     }
 
-    public function toZend_Db_Sql_Ddl_Column_ColumnInterface():Zf_ColumnInterface {
+    public function __toSqlDdlColumn():Zf_ColumnInterface {
         switch($this->getDataType()) {
+            case 'tinyint':
+                $options = [];
+                $options['length'] = $this->getNumericPrecision();
+                $options['unsigned'] = $this->getNumericUnsigned();
+                $options['zerofill'] = null; // TODO: get the zerofill option (MySQL specific)
+                $options['autoincrement'] = $this->getAutoIncrement(); // TODO: get the column autoincrement
+                $options['comment'] = null; // TODO: get the column comment
+                $options['format'] = null; // TODO: get the column format
+                $options['storage'] = null; // TODO: figure out what this option is for
+                return new \Smtm\Zfx\Db\Sql\Ddl\Column\TinyInteger($this->getName(), $this->getIsNullable(), $this->getColumnDefault(), $options);
+                break;
             case 'int':
                 $options = [];
                 $options['length'] = $this->getNumericPrecision();
@@ -83,14 +94,6 @@ class ColumnObject extends Zf_ColumnObject
                 $options['storage'] = null; // TODO: figure out what this option is for
                 return new \Zend\Db\Sql\Ddl\Column\Varchar($this->getName(), $this->getCharacterMaximumLength(), $this->getIsNullable(), $this->getColumnDefault(), $options);
                 break;
-            case 'text':
-                $options = [];
-                $options['length'] = $this->getCharacterMaximumLength();
-                $options['comment'] = null; // TODO: get the column comment
-                $options['format'] = null; // TODO: get the column format
-                $options['storage'] = null; // TODO: figure out what this option is for
-                return new \Zend\Db\Sql\Ddl\Column\Text($this->getName(), $this->getCharacterMaximumLength(), $this->getIsNullable(), $this->getColumnDefault(), $options);
-                break;
             case 'blob':
                 $options = [];
                 $options['comment'] = null; // TODO: get the column comment
@@ -111,6 +114,15 @@ class ColumnObject extends Zf_ColumnObject
                 $options['format'] = null; // TODO: get the column format
                 $options['storage'] = null; // TODO: figure out what this option is for
                 return new \Smtm\Zfx\Db\Sql\Ddl\Column\Datetime($this->getName(), $this->getIsNullable(), $this->getColumnDefault(), $options);
+                break;
+            case 'text':
+            default:
+                $options = [];
+                $options['length'] = $this->getCharacterMaximumLength();
+                $options['comment'] = null; // TODO: get the column comment
+                $options['format'] = null; // TODO: get the column format
+                $options['storage'] = null; // TODO: figure out what this option is for
+                return new \Zend\Db\Sql\Ddl\Column\Text($this->getName(), $this->getCharacterMaximumLength(), $this->getIsNullable(), $this->getColumnDefault(), $options);
                 break;
         }
     }

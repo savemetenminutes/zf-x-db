@@ -80,11 +80,11 @@ class CreateTable extends Zf_CreateTable
         // Zend Framework 3 does not support an easy 'CREATE TABLE ... LIKE' cross-platform implementation.
         $metadata = Zfx_MetadataSourceFactory::createSourceFromAdapter($adapter)->getTable($sourceTable);
         foreach($metadata->getColumns() as $column) {
-            $this->addColumn($column->toZend_Db_Sql_Ddl_Column_ColumnInterface());
+            $this->addColumn($column->__toSqlDdlColumn());
         }
 
         foreach($metadata->getConstraints() as $constraint) {
-            $this->addConstraint($constraint->toZend_Db_Sql_Ddl_Constraint_ConstraintInterface());
+            $this->addConstraint($constraint->__toSqlDdlConstraint());
         }
     }
 }

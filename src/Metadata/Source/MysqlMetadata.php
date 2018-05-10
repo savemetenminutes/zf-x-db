@@ -17,11 +17,15 @@ class MysqlMetadata extends Zf_MysqlMetadata
         $p = $this->adapter->getPlatform();
 
         $isColumns = [
+            ['CS', 'MAXLEN'],
+            ['CCSA', 'CHARACTER_SET_NAME'],
+            ['T', 'ENGINE'],
+            ['C', 'COLLATION_NAME'],
             ['C', 'ORDINAL_POSITION'],
             ['C', 'COLUMN_DEFAULT'],
             ['C', 'IS_NULLABLE'],
             ['C', 'DATA_TYPE'],
-            ['C', 'CHARACTER_MAXIMUM_LENGTH'],
+            //['C', 'CHARACTER_MAXIMUM_LENGTH'], // https://bugs.mysql.com/bug.php?id=90685
             ['C', 'CHARACTER_OCTET_LENGTH'],
             ['C', 'NUMERIC_PRECISION'],
             ['C', 'NUMERIC_SCALE'],
@@ -32,13 +36,26 @@ class MysqlMetadata extends Zf_MysqlMetadata
 
         array_walk($isColumns, function (&$c) use ($p) { $c = $p->quoteIdentifierChain($c); });
 
-        $sql = 'SELECT ' . implode(', ', $isColumns)
+        $sql = 'SELECT '
+            // https://bugs.mysql.com/bug.php?id=90685 BEGIN
+            . ' CASE '
+            . ' WHEN `C`.`COLUMN_TYPE` LIKE "%text%" THEN `C`.`CHARACTER_MAXIMUM_LENGTH` DIV `CS`.`MAXLEN`'
+            . ' ELSE `C`.`CHARACTER_MAXIMUM_LENGTH`'
+            . ' END AS `CHARACTER_MAXIMUM_LENGTH`,'
+            // https://bugs.mysql.com/bug.php?id=90685 END
+            . ' ' . implode(', ', $isColumns)
             . ' FROM ' . $p->quoteIdentifierChain(['INFORMATION_SCHEMA', 'TABLES']) . 'T'
             . ' INNER JOIN ' . $p->quoteIdentifierChain(['INFORMATION_SCHEMA', 'COLUMNS']) . 'C'
             . ' ON ' . $p->quoteIdentifierChain(['T', 'TABLE_SCHEMA'])
             . '  = ' . $p->quoteIdentifierChain(['C', 'TABLE_SCHEMA'])
             . ' AND ' . $p->quoteIdentifierChain(['T', 'TABLE_NAME'])
             . '  = ' . $p->quoteIdentifierChain(['C', 'TABLE_NAME'])
+            . ' LEFT JOIN ' . $p->quoteIdentifierChain(['INFORMATION_SCHEMA', 'COLLATION_CHARACTER_SET_APPLICABILITY']) . 'CCSA'
+            . ' ON ' . $p->quoteIdentifierChain(['C', 'COLLATION_NAME'])
+            . '  = ' . $p->quoteIdentifierChain(['CCSA', 'COLLATION_NAME'])
+            . ' LEFT JOIN ' . $p->quoteIdentifierChain(['INFORMATION_SCHEMA', 'CHARACTER_SETS']) . 'CS'
+            . ' ON ' . $p->quoteIdentifierChain(['CCSA', 'CHARACTER_SET_NAME'])
+            . '  = ' . $p->quoteIdentifierChain(['CS', 'CHARACTER_SET_NAME'])
             . ' WHERE ' . $p->quoteIdentifierChain(['T', 'TABLE_TYPE'])
             . ' IN (\'BASE TABLE\', \'VIEW\')'
             . ' AND ' . $p->quoteIdentifierChain(['T', 'TABLE_NAME'])
@@ -51,6 +68,8 @@ class MysqlMetadata extends Zf_MysqlMetadata
             $sql .= ' AND ' . $p->quoteIdentifierChain(['T', 'TABLE_SCHEMA'])
                 . ' != \'INFORMATION_SCHEMA\'';
         }
+
+        $sql .= ' ORDER BY '. $p->quoteIdentifierChain(['C', 'ORDINAL_POSITION']);
 
         $results = $this->adapter->query($sql, Adapter::QUERY_MODE_EXECUTE);
         $columns = [];
@@ -201,5 +220,39 @@ class MysqlMetadata extends Zf_MysqlMetadata
         }
 
         return $constraint;
+    }
+
+    public function loadCharacterSetsData()
+    {
+        if (isset($this->data['character_sets'])) {
+            return $this->data['character_sets'];
+        }
+        //$this->prepareDataHierarchy('columns', $schema, $table);
+        $p = $this->adapter->getPlatform();
+
+        $isColumns = [
+            ['CS', 'CHARACTER_SET_NAME'],
+            ['CS', 'DEFAULT_COLLATE_NAME'],
+            ['CS', 'DESCRIPTION'],
+            ['CS', 'MAXLEN'],
+        ];
+
+        array_walk($isColumns, function (&$c) use ($p) { $c = $p->quoteIdentifierChain($c); });
+
+        $sql = 'SELECT ' . implode(', ', $isColumns)
+            . ' FROM ' . $p->quoteIdentifierChain(['INFORMATION_SCHEMA', 'CHARACTER_SETS']) . 'CS';
+
+        $results = $this->adapter->query($sql, Adapter::QUERY_MODE_EXECUTE);
+        $characterSets = [];
+        foreach ($results->toArray() as $row) {
+            $characterSets[$row['CHARACTER_SET_NAME']] = [
+                'character_set_name'        => $row['CHARACTER_SET_NAME'],
+                'default_collate_name'      => $row['DEFAULT_COLLATE_NAME'],
+                'description'               => $row['DESCRIPTION'],
+                'maxlen'                    => $row['MAXLEN'],
+            ];
+        }
+
+        return $this->data['character_sets'] = $characterSets;
     }
 }

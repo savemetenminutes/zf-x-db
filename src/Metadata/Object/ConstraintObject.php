@@ -19,7 +19,7 @@ class ConstraintObject extends Zfx_ConstraintObject
         parent::__construct($name, $tableName, $schemaName);
     }
 
-    public function toZend_Db_Sql_Ddl_Constraint_ConstraintInterface():Zfx_ConstraintInterface {
+    public function __toSqlDdlConstraint():Zfx_ConstraintInterface {
         switch($this->getType()) {
             case 'PRIMARY KEY':
                 $options = [];
