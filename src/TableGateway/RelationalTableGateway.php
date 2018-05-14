@@ -16,22 +16,46 @@ use Zend\Db\Adapter\Exception\InvalidQueryException;
 use Zend\Db\ResultSet\HydratingResultSet;
 use Zend\Db\ResultSet\ResultSetInterface;
 use Zend\Db\Sql\Ddl\CreateTable;
-use Zend\Db\Sql\Insert;
 use Zend\Db\Sql\TableIdentifier;
 use Zend\Db\TableGateway\TableGateway;
+use Zend\Db\TableGateway\TableGatewayInterface;
 use Zend\Hydrator\ClassMethods;
 
 class RelationalTableGateway implements RelationalTableGatewayInterface
 {
+    protected $tableSuffix;
     protected $adapterDefinitions;
     protected $entityDefinitions;
     protected $entityRelations;
+    protected $baseTableIdentifiers;
+    protected $tableIdentifiers;
+    protected $baseTableGateways;
+    protected $tableGateways;
 
-    public function __construct(AdapterInterface ...$adapters)
+    public function __construct(string $tableSuffix = null, AdapterInterface ...$adapters)
     {
+        $this->tableSuffix = $tableSuffix ?? '';
         $entityDefinitions = defined('static::ENTITY_DEFINITIONS') ? static::ENTITY_DEFINITIONS : [];
         $entityRelations = defined('static::ENTITY_RELATIONS') ? static::ENTITY_RELATIONS : [];
-        $this->setEntityDefinitions($entityDefinitions)->setEntityRelations($entityRelations)->initializeAdapterDefinitions($adapters)->initializeTableIdentifiers();
+        $this->setEntityDefinitions($entityDefinitions)->setEntityRelations($entityRelations)->initializeAdapterDefinitions($adapters);
+    }
+
+    /**
+     * @return string
+     */
+    public function getTableSuffix(): string
+    {
+        return $this->tableSuffix;
+    }
+
+    /**
+     * @param string $tableSuffix
+     * @return RelationalTableGateway
+     */
+    public function setTableSuffix(string $tableSuffix): RelationalTableGateway
+    {
+        $this->tableSuffix = $tableSuffix;
+        return $this;
     }
 
     protected function initializeAdapterDefinitions($adapters)
@@ -53,29 +77,21 @@ class RelationalTableGateway implements RelationalTableGatewayInterface
         return $this;
     }
 
-    protected function initializeTableIdentifiers()
+    public function post($entity, TableGatewayInterface $tableGateway = null)
     {
-        foreach($this->getEntityDefinitions() as $entity => $entityDefinition) {
-            $this->setTableIdentifier($entity, new TableIdentifier($entityDefinition[self::TABLE], $entityDefinition[self::SCHEMA]));
+        if(!is_object($entity)) {
+            throw new \Exception('An object must be provided in order to persist a record. ('.gettype($entity).' provided)');
         }
 
-        return $this;
-    }
+        $tableGateway = $tableGateway ?? $this->getTableGateway($entity);
+        $values = $this->extractEntity($entity);
+        $tableGateway->insert($values);
 
-    public function post($entity)
-    {
-        if(!is_object($entity) && class_exists($entity)) {
-            $entity = new $entity;
-        }
+        $lastInsertSequenceColumn = [
+            $this->getInsertSequenceColumn($entity) => $tableGateway->getLastInsertValue(),
+        ];
 
-        $entityDefinition = $this->getEntityDefinition($entity);
-        if(empty($entityDefinition)) {
-            throw new \Exception('Entity '.$entityDefinition[self::ENTITY].' not found in relations model.');
-        }
-        $adapterDefinition = $this->getAdapterDefinition($entityDefinition[self::ADAPTER]);
-        $columns = $this->extractEntity($entity);
-        $insert = new Insert($entityDefinition[self::TABLE_IDENTIFIER]);
-        $insert->columns($columns);
+        return $this->hydrateEntity($entity, $lastInsertSequenceColumn);
     }
 
     public function get(array $query = [], bool $leadTransaction = true)
@@ -555,20 +571,17 @@ class RelationalTableGateway implements RelationalTableGatewayInterface
 
     public function hydrateEntity($entity, $data)
     {
-        $entityDefinition = $this->getEntityDefinition($entity);
-        if(empty($entityDefinition)) {
-            throw new \Exception('Entity '.get_class($entity).' not found in relations model.');
-        }
+        $entityClass = $this->getEntityClass($entity);
 
         if(empty($data)) {
             if(is_object($entity)) {
                 return $entity;
             } else {
-                return new $entity;
+                return new $entityClass;
             }
         }
 
-        $hydrator = $this->createHydrator($entityDefinition);
+        $hydrator = $this->createHydrator($entity);
 
         if(!is_object($entity)) {
             $entity = new $entity;
@@ -579,15 +592,10 @@ class RelationalTableGateway implements RelationalTableGatewayInterface
     public function extractEntity($entity)
     {
         if(!is_object($entity)) {
-            throw new \Exception('Entity: '.var_export($entity, true).' must be a valid relation model object in order to be extracted from.');
+            throw new \Exception('Entity: '.var_export($entity, true).' must be a valid model object in order to be extracted from.');
         }
 
-        $entityDefinition = $this->getEntityDefinition($entity);
-        if(empty($entityDefinition)) {
-            throw new \Exception('Entity '.get_class($entity).' not found in relations model.');
-        }
-
-        $hydrator = $this->createHydrator($entityDefinition);
+        $hydrator = $this->createHydrator($entity);
 
         return $hydrator->extract($entity);
     }
@@ -618,6 +626,11 @@ class RelationalTableGateway implements RelationalTableGatewayInterface
         return $values;
     }
 
+    public function getEntityClass($entity)
+    {
+        return is_object($entity) ? get_class($entity) : $entity;
+    }
+
     /**
      * @param mixed $adapterIndex
      * @return AdapterInterface
@@ -625,6 +638,28 @@ class RelationalTableGateway implements RelationalTableGatewayInterface
     public function getAdapter($adapterIndex): AdapterInterface
     {
         return $this->getAdapterDefinitions()[$adapterIndex][self::ADAPTER] ?? null;
+    }
+
+    /**
+     * @param mixed $entity
+     * @return AdapterInterface
+     * @throws \Exception
+     */
+    public function getAdapterForEntity($entity): AdapterInterface
+    {
+        $adapterIndex = $this->getEntityDefinition($entity)[self::ADAPTER];
+        return $this->getAdapter($adapterIndex) ?? null;
+    }
+
+    /**
+     * @param mixed $entity
+     * @return array
+     * @throws \Exception
+     */
+    public function getAdapterDefinitionForEntity($entity): array
+    {
+        $adapterIndex = $this->getEntityDefinition($entity)[self::ADAPTER];
+        return $this->getAdapterDefinition($adapterIndex) ?? null;
     }
 
     /**
@@ -655,34 +690,100 @@ class RelationalTableGateway implements RelationalTableGatewayInterface
     }
 
     /**
-     * @param string $entity
+     * @param mixed $entity
      * @return array
+     * @throws \Exception
      */
-    public function getEntityDefinition(string $entity): array
+    public function getEntityDefinition($entity): array
     {
-        return $this->entityDefinitions[$entity] ?? null;
+        $entityDefinition = $this->entityDefinitions[$this->getEntityClass($entity)] ?? null;
+        if($entityDefinition === null) {
+            throw new \Exception('Entity '.$this->getEntityClass($entity).' not found in model.');
+        }
+
+        return $entityDefinition;
     }
 
     /**
-     * @param string $entity
+     * @param mixed $entity
      * @param array $entityDefinition
      * @return RelationalTableGateway
      */
     public function setEntityDefinition($entity, array $entityDefinition): RelationalTableGateway
     {
-        $this->entityDefinitions[$entity] = $entityDefinition;
+        $this->entityDefinitions[$this->getEntityClass($entity)] = $entityDefinition;
         return $this;
     }
 
     /**
      * @param string $entity
-     * @param TableIdentifier $tableIdentifier
-     * @return RelationalTableGateway
+     * @return TableIdentifier
+     * @throws \Exception
      */
-    public function setTableIdentifier($entity, TableIdentifier $tableIdentifier): RelationalTableGateway
+    public function getBaseTableIdentifier($entity): TableIdentifier
     {
-        $this->entityDefinitions[$entity][self::TABLE_IDENTIFIER] = $tableIdentifier;
-        return $this;
+        $entityDefinition = $this->getEntityDefinition($this->getEntityClass($entity));
+        $entityTable = $entityDefinition[self::TABLE];
+        $entitySchema = $entityDefinition[self::SCHEMA];
+        if(isset($this->baseTableIdentifiers[$entitySchema ?? ''][$entityTable])) {
+            return $this->baseTableIdentifiers[$entitySchema ?? ''][$entityTable];
+        }
+
+        return $this->baseTableIdentifiers[$entitySchema ?? ''][$entityTable] = new TableIdentifier($entityTable, $entitySchema);
+    }
+
+    /**
+     * @param string $entity
+     * @return TableIdentifier
+     * @throws \Exception
+     */
+    public function getTableIdentifier($entity): TableIdentifier
+    {
+        $entityDefinition = $this->getEntityDefinition($this->getEntityClass($entity));
+        $entityTable = $entityDefinition[self::TABLE] . $this->getTableSuffix();
+        $entitySchema = $entityDefinition[self::SCHEMA];
+        if(isset($this->tableIdentifiers[$entitySchema ?? ''][$entityTable])) {
+            return $this->tableIdentifiers[$entitySchema ?? ''][$entityTable];
+        }
+
+        return $this->tableIdentifiers[$entitySchema ?? ''][$entityTable] = new TableIdentifier($entityTable, $entitySchema);
+    }
+
+    /**
+     * @param mixed $entity
+     * @return TableGatewayInterface
+     * @throws \Exception
+     */
+    public function getBaseTableGateway($entity): TableGatewayInterface
+    {
+        $baseTableIdentifier = $this->getBaseTableIdentifier($entity);
+        if(isset($this->baseTableGateways[$baseTableIdentifier->getSchema() ?? ''][$baseTableIdentifier->getTable()])) {
+            return $this->baseTableGateways[$baseTableIdentifier->getSchema() ?? ''][$baseTableIdentifier->getTable()];
+        }
+
+        $resultSetPrototype = new HydratingResultSet($this->createHydrator($entity), new $entity());
+        return $this->baseTableGateways[$baseTableIdentifier->getSchema() ?? ''][$baseTableIdentifier->getTable()] = new TableGateway($baseTableIdentifier, $this->getAdapterForEntity($entity), null, $resultSetPrototype);
+    }
+
+    /**
+     * @param mixed $entity
+     * @return TableGatewayInterface
+     * @throws \Exception
+     */
+    public function getTableGateway($entity): TableGatewayInterface
+    {
+        $tableIdentifier = $this->getTableIdentifier($entity);
+        if(isset($this->tableGateways[$tableIdentifier->getSchema() ?? ''][$tableIdentifier->getTable()])) {
+            return $this->tableGateways[$tableIdentifier->getSchema() ?? ''][$tableIdentifier->getTable()];
+        }
+
+        $resultSetPrototype = new HydratingResultSet($this->createHydrator($entity), new $entity());
+        return $this->tableGateways[$tableIdentifier->getSchema() ?? ''][$tableIdentifier->getTable()] = new TableGateway($tableIdentifier, $this->getAdapterForEntity($entity), null, $resultSetPrototype);
+    }
+
+    public function getInsertSequenceColumn($entity): string
+    {
+        return $this->getEntityDefinition($entity)[self::INSERT_SEQUENCE_COLUMN] ?? null;
     }
 
     /**

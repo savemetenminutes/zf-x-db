@@ -3,6 +3,7 @@
 namespace Smtm\Zfx\Db\Metadata\Source;
 
 use Zend\Db\Adapter\Adapter;
+use Zend\Db\Adapter\AdapterInterface;
 use Zend\Db\Exception\InvalidArgumentException;
 use Zend\Db\Metadata\MetadataInterface;
 
@@ -18,7 +19,7 @@ class Factory
      * @return MetadataInterface
      * @throws InvalidArgumentException If adapter platform name not recognized.
      */
-    public static function createSourceFromAdapter(Adapter $adapter)
+    public static function createSourceFromAdapter(AdapterInterface $adapter)
     {
         $platformName = $adapter->getPlatform()->getName();
 

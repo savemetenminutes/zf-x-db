@@ -3,6 +3,7 @@
 namespace Smtm\Zfx\Db\Sql\Ddl;
 
 use Smtm\Zfx\Db\Metadata\Source\Factory as Zfx_MetadataSourceFactory;
+use Zend\Db\Adapter\AdapterInterface;
 use Zend\Db\Adapter\Platform\PlatformInterface;
 use Zend\Db\Adapter\Adapter as Adapter;
 use Zend\Db\Sql\Ddl\CreateTable as Zf_CreateTable;
@@ -76,7 +77,7 @@ class CreateTable extends Zf_CreateTable
         ];
     }
 
-    public function copyTableStructure(String $sourceTable, Adapter $adapter) {
+    public function copyTableStructure(String $sourceTable, AdapterInterface $adapter) {
         // Zend Framework 3 does not support an easy 'CREATE TABLE ... LIKE' cross-platform implementation.
         $metadata = Zfx_MetadataSourceFactory::createSourceFromAdapter($adapter)->getTable($sourceTable);
         foreach($metadata->getColumns() as $column) {

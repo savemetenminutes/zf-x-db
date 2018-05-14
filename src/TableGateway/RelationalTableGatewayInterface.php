@@ -7,6 +7,7 @@ interface RelationalTableGatewayInterface
     const ADAPTER = 'adapter';
     const SCHEMA = 'schema';
     const TABLE = 'table';
+    const INSERT_SEQUENCE_COLUMN = 'insert_sequence_column';
     const COLUMNS = 'columns';
     const ENTITY = 'entity';
     const RELATES = 'relates';
