@@ -29,6 +29,7 @@ interface RelationalTableGatewayInterface
     const IS_NOT_NULL = 'is_not_null';
     const GROUP = 'group';
 
+    const TABLE_SUFFIX = 'table_suffix';
     const TABLE_IDENTIFIER = 'table_identifier';
     const TABLE_GATEWAY = 'table_gateway';
     const SQL = 'sql';

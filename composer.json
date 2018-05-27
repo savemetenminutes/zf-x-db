@@ -1,6 +1,6 @@
 {
     "name": "savemetenminutes/zf-x-db",
-    "description": "extended classes for zend framework (zend-db)",
+    "description": "save me ten minutes - zend framework extended classes (zend-db)",
     "license": "BSD 3-Clause License",
     "type": "library",
     "homepage": "https://github.com/savemetenminutes/zf-x-db",
