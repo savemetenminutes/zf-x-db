@@ -6,7 +6,7 @@ use Smtm\Zfx\Db\Metadata\Object as MetadataObject;
 use Zend\Db\Adapter\Adapter;
 use Zend\Db\Metadata\Source\MysqlMetadata as Zf_MysqlMetadata;
 
-class MysqlMetadata extends Zf_MysqlMetadata
+class MariadbV10_2_7Metadata extends Zf_MysqlMetadata
 {
     protected function loadColumnData($table, $schema)
     {
@@ -85,10 +85,14 @@ class MysqlMetadata extends Zf_MysqlMetadata
                 }
                 $erratas['permitted_values'] = $permittedValues;
             }
+            $columnDefault = preg_match('#\'(.*)\'#', $row['COLUMN_DEFAULT'], $match) ? $match[1] : $row['COLUMN_DEFAULT'];
+            if(strtolower($columnDefault) === 'null') {
+                $columnDefault = null;
+            }
             $columns[$row['COLUMN_NAME']] = [
                 'ordinal_position'          => $row['ORDINAL_POSITION'],
                 'auto_increment'            => in_array('auto_increment', explode(',', $row['EXTRA'])),
-                'column_default'            => $row['COLUMN_DEFAULT'],
+                'column_default'            => $columnDefault,
                 'is_nullable'               => ('YES' == $row['IS_NULLABLE']),
                 'data_type'                 => $row['DATA_TYPE'],
                 'character_maximum_length'  => $row['CHARACTER_MAXIMUM_LENGTH'],

@@ -1,7 +1,7 @@
 {
     "name": "savemetenminutes/zf-x-db",
     "description": "save me ten minutes - zend framework extended classes (zend-db)",
-    "license": "BSD 3-Clause License",
+    "license": "BSD-3-Clause",
     "type": "library",
     "homepage": "https://github.com/savemetenminutes/zf-x-db",
     "authors": [
@@ -12,11 +12,17 @@
     ],
     "require": {
         "php": ">=7",
-        "zendframework/zend-db": "^2"
+        "zendframework/zend-db": "^2.10.0",
+        "zendframework/zend-hydrator": "^3.0.2"
     },
     "autoload": {
         "psr-4": {
-          "Smtm\\Zfx\\Db\\": "src/"
+            "Smtm\\Zfx\\Db\\": "src/"
+        }
+    },
+    "extra": {
+        "zf": {
+            "config-provider": "Smtm\\Zfx\\Db\\ConfigProvider"
         }
     }
 }

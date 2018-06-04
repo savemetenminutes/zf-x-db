@@ -22,12 +22,14 @@ interface RelationalTableGatewayInterface
     const IN = 'in';
     const NOT_IN = 'not_in';
     const GREATER_THAN = 'greater_than';
-    const GREATER_OR_EQUAL_THAN = 'greater_or_equal_than';
+    const GREATER_THAN_OR_EQUAL_TO = 'greater_than_or_equal_to';
     const LESS_THAN = 'less_than';
-    const LESS_OR_EQUAL_THAN = 'less_or_equal_than';
+    const LESS_THAN_OR_EQUAL_TO = 'less_than_or_equal_to';
     const IS_NULL = 'is_null';
     const IS_NOT_NULL = 'is_not_null';
     const GROUP = 'group';
+    const LIMIT = 'limit';
+    const OFFSET = 'offset';
 
     const TABLE_SUFFIX = 'table_suffix';
     const TABLE_IDENTIFIER = 'table_identifier';

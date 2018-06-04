@@ -2,6 +2,7 @@
 
 namespace Smtm\Zfx\Db\TableGateway;
 
+use ArrayObject;
 use Interop\Container\ContainerInterface;
 use Smtm\Zfx\Db\Sql\Ddl\CreateTable as Zfx_CreateTable;
 use Smtm\Zfx\Db\Sql\Ddl\AlterTable as Zfx_AlterTable;
@@ -16,8 +17,8 @@ use Zend\Db\ResultSet\HydratingResultSet;
 use Zend\Db\ResultSet\ResultSetInterface;
 use Zend\Db\Sql\Ddl\CreateTable;
 use Zend\Db\Sql\TableIdentifier;
-use Zend\Db\TableGateway\TableGateway;
 use Zend\Db\TableGateway\TableGatewayInterface;
+use Zend\Hydrator\ArraySerializable;
 use Zend\Hydrator\ClassMethods;
 use Zend\Hydrator\HydratorAwareInterface;
 use Zend\Hydrator\HydratorAwareTrait;
@@ -54,7 +55,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
         }
 
         $entityDefinitions = defined('static::ENTITY_DEFINITIONS') ? static::ENTITY_DEFINITIONS : [];
-        $entityRelations = defined('static::ENTITY_RELATIONS') ? static::ENTITY_RELATIONS : [];
+        $entityRelations   = defined('static::ENTITY_RELATIONS') ? static::ENTITY_RELATIONS : [];
         $this->setEntityDefinitions($entityDefinitions)->setEntityRelations($entityRelations)->initializeAdapterDefinitions($adapters);
     }
 
@@ -63,11 +64,12 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
         foreach ($adapters as $index => $adapter) {
             $this->adapterDefinitions[$index][self::ADAPTER] = $adapter;
 
-            $tables = array_filter($this->getEntityDefinitions(), function ($item) use ($index) {
-                return $item[self::ADAPTER] === $index;
-            });
-            $tables = array_column($tables, self::TABLE);
-            $this->adapterDefinitions[$index][self::TABLES] = $tables;
+            $tables                                                = array_filter($this->getEntityDefinitions(),
+                function ($item) use ($index) {
+                    return $item[self::ADAPTER] === $index;
+                });
+            $tables                                                = array_column($tables, self::TABLE);
+            $this->adapterDefinitions[$index][self::TABLES]        = $tables;
             $this->adapterDefinitions[$index][self::TABLE_GATEWAY] = new TableGateway($tables,
                 $this->adapterDefinitions[$index][self::ADAPTER]);
             // Because there is no cross-platform (nor a platform-specific for that matter) support for things like CREATE TABLE ... LIKE and TRUNCATE TABLE we have to do all this...
@@ -87,7 +89,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
         }
 
         $tableGateway = $tableGateway ?? $this->getTableGateway($entity);
-        $values = $this->extract($entity);
+        $values       = $this->extract($entity);
         $tableGateway->insert($values);
 
         $lastInsertSequenceColumn = [
@@ -97,15 +99,15 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
         return $this->hydrate($lastInsertSequenceColumn, $entity);
     }
 
-    public function get(array $query = [], bool $leadTransaction = true)
+    public function get(array $query = [])
     {
         if (empty($query[self::SELECT])) {
             throw new \Exception('No tables selected', 1);
         }
 
-        $entity = key($query[self::SELECT]);
+        $entity           = key($query[self::SELECT]);
         $fromTableGateway = $this->getTableGateway($entity);
-        $select = $fromTableGateway->getSql()->select();
+        $select           = $fromTableGateway->getSql()->select();
         foreach ($query[self::SELECT] as $entity => $columns) {
             $selectColumns = $this->getSelectColumns($query, $entity);
             $select->columns($selectColumns);
@@ -116,16 +118,18 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
 
     public function decorateResultSet($resultSet, $entity): ResultSetInterface
     {
-        if($this->hydrator === null) {
-            return $resultSet;
-        }
-
-        if($resultSet instanceof HydratingResultSet) {
-            if($this->getEntityManager()->has($entity)) {
-                $entityDefinition = $this->getEntityDefinition($entity);
-                $table = $entityDefinition[self::TABLE];
-                $entity = is_object($entity) ? $entity : $this->getEntityManager()->get($entity);
-                $entityColumns = $this->extract($entity);
+        if ($resultSet instanceof HydratingResultSet) {
+            if ($entity instanceof ArrayObject) {
+                return
+                    $resultSet
+                        ->setHydrator(new ArraySerializable())
+                        ->setObjectPrototype($entity);
+            }
+            $entityDefinition = $this->getEntityDefinition($entity);
+            if ($this->getEntityManager()->has($entityDefinition[self::ENTITY])) {
+                $table                      = $entityDefinition[self::TABLE];
+                $entity                     = is_object($entity) ? $entity : $this->getEntityManager()->get($entity);
+                $entityColumns              = $this->extract($entity);
                 $entityColumnsTablePrefixed = [];
                 array_walk(
                     $entityColumns,
@@ -155,25 +159,25 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
 
         $entities = $this->findAllInvolvedEntities($query);
 
-        $allChains = $this->buildRelationsChains($query, $entities);
-        $chains = $allChains['entityChains'];
-        $mergedChains = $allChains['mergedChains'];
+        $allChains                   = $this->buildRelationsChains($query, $entities);
+        $chains                      = $allChains['entityChains'];
+        $mergedChains                = $allChains['mergedChains'];
         $interAdapterChainsRelations = $allChains['interAdapterChainsRelations'];
-        $adapterChainsPrioritized = $allChains['adapterChainsPrioritized'];
+        $adapterChainsPrioritized    = $allChains['adapterChainsPrioritized'];
 
         // Process the cross-adapter queries from the last one backwards and prepare the target adapter query where clause values
-        $key = null;
+        $key        = null;
         $resultSets = [];
         foreach ($adapterChainsPrioritized as $key => $adapterChain) {
-            $resultSets[] = [];
+            $resultSets[]          = [];
             $currentResultSetIndex = count($resultSets) - 1;
 
             // Prepare the select from... table
             $fromEntityDefinition = reset($adapterChain);
-            $fromEntity = key($adapterChain);
-            $fromTableIdentifier = new TableIdentifier($fromEntityDefinition[self::TABLE],
+            $fromEntity           = key($adapterChain);
+            $fromTableIdentifier  = new TableIdentifier($fromEntityDefinition[self::TABLE],
                 $fromEntityDefinition[self::SCHEMA]);
-            $fromTableGateway = new TableGateway($fromTableIdentifier,
+            $fromTableGateway     = new TableGateway($fromTableIdentifier,
                 $this->adapters[$fromEntityDefinition[self::ADAPTER]]);
 
             $select = $fromTableGateway->getSql()->select();
@@ -185,18 +189,19 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
             $select->columns($selectColumns);
 
             // Prepare the join tables
-            $previousEntityChain = [];
+            $previousEntityChain     = [];
             $previousTableIdentifier = null;
             foreach ($adapterChain as $entity => $entityDefinition) {
-                $previousChainObjects = $this->getPreviousChainObjects($chains, $entity);
-                $previousEntityChain = $previousChainObjects['previousEntityChain'];
+                $previousChainObjects    = $this->getPreviousChainObjects($chains, $entity);
+                $previousEntityChain     = $previousChainObjects['previousEntityChain'];
                 $previousTableIdentifier = $previousChainObjects['previousTableIdentifier'];
                 // We have already processed the first table as a select from... table so skip to the next one
                 if ($entity === $fromEntity) {
                     continue;
                 }
 
-                $tableIdentifier = new TableIdentifier($entityDefinition[self::TABLE], $entityDefinition[self::SCHEMA]);
+                $tableIdentifier   = new TableIdentifier($entityDefinition[self::TABLE],
+                    $entityDefinition[self::SCHEMA]);
                 $joinSelectColumns = $this->getSelectColumns($query, $entity, $entityDefinition,
                     $resultSets[$currentResultSetIndex]);
                 $select->join($tableIdentifier,
@@ -214,7 +219,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
             }
 
             $resultSets[$currentResultSetIndex][self::RESULT_SET_RESULT] = &$result;
-            $entitiesResultsMap = [];
+            $entitiesResultsMap                                          = [];
             foreach ($adapterChain as $entity => $entityDefinition) {
                 if (isset($resultSets[$currentResultSetIndex][self::RESULT_SET_PROTOTYPE][$entity])) {
                     $currentHydrator = $resultSets[$currentResultSetIndex][self::RESULT_SET_PROTOTYPE][$entity]->getHydrator();
@@ -260,17 +265,17 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
     public function buildRelationsChains($query, $entities)
     {
         // Determine the entity join chains for each entity
-        $chains = [];
+        $chains       = [];
         $mergedChains = [];
         foreach ($entities as $entity => $entityRepeated) {
-            $chain = [];
+            $chain    = [];
             $relation = $this->findRelationChain($entity, $chain);
             if (!$relation) {
                 // The entity does not figure in the relations schema
                 throw new \Exception('Invalid entity: ' . $entity, 2);
             }
             $chains[$entity] = array_reverse($chain);
-            $mergedChains = array_merge($mergedChains, $chains[$entity]);
+            $mergedChains    = array_merge($mergedChains, $chains[$entity]);
         }
 
         // Build an all entity encompassing chain
@@ -285,21 +290,21 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
         $mergedChains = $_mergedChains;
 
         // Create each adapter's own chain and determine the inter-adapter table relations
-        $currentAdapter = reset($mergedChains)[self::ADAPTER];
-        $adapterChains[] = [];
-        $adapterChainsCount = 1;
-        $currentAdapterChainIndex = 0;
+        $currentAdapter                = reset($mergedChains)[self::ADAPTER];
+        $adapterChains[]               = [];
+        $adapterChainsCount            = 1;
+        $currentAdapterChainIndex      = 0;
         $interAdapterChainsRelations[] = [];
         foreach ($mergedChains as $entity => $entityDefinition) {
             if ($currentAdapter == $entityDefinition[self::ADAPTER]) {
                 $adapterChains[$currentAdapterChainIndex][$entity] = $entityDefinition;
             } else {
                 $interAdapterChainsRelations[$currentAdapterChainIndex][key($previousEntity)] = reset($previousEntity) + [self::INTER_ADAPTER_RELATES => [$entity => $entityDefinition]];
-                $interAdapterChainsRelations[] = [];
-                $adapterChains[] = [$entity => $entityDefinition];
-                $adapterChainsCount = count($adapterChains);
-                $currentAdapterChainIndex = $adapterChainsCount - 1;
-                $currentAdapter = $entityDefinition[self::ADAPTER];
+                $interAdapterChainsRelations[]                                                = [];
+                $adapterChains[]                                                              = [$entity => $entityDefinition];
+                $adapterChainsCount                                                           = count($adapterChains);
+                $currentAdapterChainIndex                                                     = $adapterChainsCount - 1;
+                $currentAdapter                                                               = $entityDefinition[self::ADAPTER];
             }
             $previousEntity = [$entity => $entityDefinition];
         }
@@ -311,7 +316,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
 
         // Determine the order of adapter chains resolution based on the reverse order of selected tables
         $adapterChainsPrioritized = [];
-        $_adapterChains = $adapterChains;
+        $_adapterChains           = $adapterChains;
         foreach ($query[self::SELECT] as $entity => $querySelect) {
             if (empty($_adapterChains)) {
                 break;
@@ -333,10 +338,10 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
         $adapterChainsPrioritized = array_reverse($adapterChainsPrioritized);
 
         return [
-            'entityChains' => $chains,
-            'mergedChains' => $mergedChains,
+            'entityChains'                => $chains,
+            'mergedChains'                => $mergedChains,
             'interAdapterChainsRelations' => $interAdapterChainsRelations,
-            'adapterChainsPrioritized' => $adapterChainsPrioritized
+            'adapterChainsPrioritized'    => $adapterChainsPrioritized
         ];
     }
 
@@ -365,7 +370,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
     protected function processSelectColumns($queryColumns, $entity)
     {
         $entityDefinition = $this->getEntityDefinition($entity);
-        $selectColumns = [];
+        $selectColumns    = [];
         foreach ($queryColumns as $columnAlias => $column) {
             $alias = $entityDefinition[self::SCHEMA] . $entityDefinition[self::TABLE] . '_';
             if (is_numeric($columnAlias)) {
@@ -383,7 +388,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
     {
         $selectColumns = [];
         if (isset($query[self::SELECT][$entity])) {
-            $queryColumns = $this->determineSelectColumns($query, $entity);
+            $queryColumns  = $this->determineSelectColumns($query, $entity);
             $selectColumns = $this->processSelectColumns($queryColumns, $entity);
         }
 
@@ -392,7 +397,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
 
     public function getPreviousChainObjects($chains, $entity)
     {
-        $previousEntityChain = [];
+        $previousEntityChain     = [];
         $previousTableIdentifier = null;
 
         // Find the previous entity's chain
@@ -412,14 +417,14 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
             //$previousEntityChain = array_reverse($previousEntityChain);
             //reset($previousEntityChain);
             //next($previousEntityChain);
-            $previousTableName = current($previousEntityChain)[self::TABLE];
-            $previousTableSchema = current($previousEntityChain)[self::SCHEMA];
+            $previousTableName       = current($previousEntityChain)[self::TABLE];
+            $previousTableSchema     = current($previousEntityChain)[self::SCHEMA];
             $previousTableIdentifier = new TableIdentifier($previousTableName, $previousTableSchema);
             reset($previousEntityChain);
         }
 
         return [
-            'previousEntityChain' => $previousEntityChain,
+            'previousEntityChain'     => $previousEntityChain,
             'previousTableIdentifier' => $previousTableIdentifier,
         ];
     }
@@ -438,15 +443,15 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
             if (empty($interAdapterChainsRelations[$currentChainKey])) {
                 // This is the column whose values will be used in the where in... clause of the subsequent adapter chain query
                 $interAdapterJoinColumn = reset($entityDefinition[self::ON]);
-                $alias = $entityDefinition[self::SCHEMA] . $entityDefinition[self::TABLE] . '_' . $interAdapterJoinColumn;
-                $selectColumns[$alias] = $interAdapterJoinColumn;
+                $alias                  = $entityDefinition[self::SCHEMA] . $entityDefinition[self::TABLE] . '_' . $interAdapterJoinColumn;
+                $selectColumns[$alias]  = $interAdapterJoinColumn;
                 if (!isset($resultSets[$currentResultSetIndex][self::RESULT_SET_DEFINITIONS][$entity])) {
                     $resultSets[$currentResultSetIndex][self::RESULT_SET_DEFINITIONS][$entity] = $entityDefinition;
                 }
                 $resultSets[$currentResultSetIndex][self::RESULT_SET_DEFINITIONS][$entity][self::COLUMNS][$alias] = $interAdapterJoinColumn;
             } else {
                 if (!empty($previousResult->count())) {
-                    $currentChainInterAdapterJoinColumn =
+                    $currentChainInterAdapterJoinColumn  =
                         reset($interAdapterChainsRelations[$currentChainKey])[self::TABLE] .
                         '.' .
                         key(reset(reset($interAdapterChainsRelations[$currentChainKey])[self::INTER_ADAPTER_RELATES])[self::ON]);
@@ -475,7 +480,8 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
                 foreach ($clauseValues as $operandType => $filterValues) {
                     foreach ($filterValues as $entity => $filter) {
                         $entityDefinition = $this->getEntityDefinition($entity);
-                        $filterArray = $filter;
+                        $tableIdentifier  = $this->getTableIdentifier($entityDefinition[self::ENTITY]);
+                        $filterArray      = $filter;
                         if (is_object($filter)) {
                             if ($hydrator = $this->getHydrator()) {
                                 $filterArray = $hydrator->extract($filter);
@@ -494,7 +500,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
                             case self::IN:
                                 foreach ($filterArray as $filterColumn => $filterValue) {
                                     if ($filterValue !== null) {
-                                        $select->where->in($entityDefinition[self::TABLE] . '.' . $filterColumn,
+                                        $select->where->in($tableIdentifier->getTable() . '.' . $filterColumn,
                                             $filterValue);
                                     }
                                 }
@@ -502,7 +508,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
                             case self::NOT_IN:
                                 foreach ($filterArray as $filterColumn => $filterValue) {
                                     if ($filterValue !== null) {
-                                        $select->where->notIn($entityDefinition[self::TABLE] . '.' . $filterColumn,
+                                        $select->where->notIn($tableIdentifier->getTable() . '.' . $filterColumn,
                                             $filterValue);
                                     }
                                 }
@@ -510,7 +516,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
                             case self::NOT_EQUAL:
                                 foreach ($filterArray as $filterColumn => $filterValue) {
                                     if ($filterValue !== null) {
-                                        $select->where->notEqualTo($entityDefinition[self::TABLE] . '.' . $filterColumn,
+                                        $select->where->notEqualTo($tableIdentifier->getTable() . '.' . $filterColumn,
                                             $filterValue);
                                     }
                                 }
@@ -518,7 +524,39 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
                             case self::EQUAL:
                                 foreach ($filterArray as $filterColumn => $filterValue) {
                                     if ($filterValue !== null) {
-                                        $select->where->equalTo($entityDefinition[self::TABLE] . '.' . $filterColumn,
+                                        $select->where->equalTo($tableIdentifier->getTable() . '.' . $filterColumn,
+                                            $filterValue);
+                                    }
+                                }
+                                break;
+                            case self::LESS_THAN:
+                                foreach ($filterArray as $filterColumn => $filterValue) {
+                                    if ($filterValue !== null) {
+                                        $select->where->lessThan($tableIdentifier->getTable() . '.' . $filterColumn,
+                                            $filterValue);
+                                    }
+                                }
+                                break;
+                            case self::LESS_THAN_OR_EQUAL_TO:
+                                foreach ($filterArray as $filterColumn => $filterValue) {
+                                    if ($filterValue !== null) {
+                                        $select->where->lessThanOrEqualTo($tableIdentifier->getTable() . '.' . $filterColumn,
+                                            $filterValue);
+                                    }
+                                }
+                                break;
+                            case self::GREATER_THAN:
+                                foreach ($filterArray as $filterColumn => $filterValue) {
+                                    if ($filterValue !== null) {
+                                        $select->where->greaterThan($tableIdentifier->getTable() . '.' . $filterColumn,
+                                            $filterValue);
+                                    }
+                                }
+                                break;
+                            case self::GREATER_THAN_OR_EQUAL_TO:
+                                foreach ($filterArray as $filterColumn => $filterValue) {
+                                    if ($filterValue !== null) {
+                                        $select->where->greaterThanOrEqualTo($tableIdentifier->getTable() . '.' . $filterColumn,
                                             $filterValue);
                                     }
                                 }
@@ -532,12 +570,21 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
                 if ($clauseType == self::GROUP) {
                     foreach ($clauseValues as $entity => $columns) {
                         $entityDefinition = $this->getEntityDefinition($entity);
-                        $groupColumns = $columns;
+                        $tableIdentifier  = $this->getTableIdentifier($entityDefinition[self::ENTITY]);
+                        $groupColumns     = $columns;
                         if (!is_array($groupColumns)) {
                             $groupColumns = [$groupColumns];
                         }
                         foreach ($groupColumns as $groupColumn) {
-                            $select->group($entityDefinition[self::TABLE] . '.' . $groupColumn);
+                            $select->group($tableIdentifier->getTable() . '.' . $groupColumn);
+                        }
+                    }
+                } else {
+                    if ($clauseType == self::LIMIT) {
+                        $select->limit($clauseValues);
+                    } else {
+                        if ($clauseType == self::OFFSET) {
+                            $select->offset($clauseValues);
                         }
                     }
                 }
@@ -648,7 +695,7 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
         return $this->hydrator->hydrate($data, $object);
     }
 
-    public function extract($object)
+    public function extract(object $object) : array
     {
         return $this->hydrator->extract($object);
     }
@@ -768,8 +815,8 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
     public function getBaseTableIdentifier($entity): TableIdentifier
     {
         $entityDefinition = $this->getEntityDefinition($this->getEntityClass($entity));
-        $entityTable = $entityDefinition[self::TABLE];
-        $entitySchema = $entityDefinition[self::SCHEMA];
+        $entityTable      = $entityDefinition[self::TABLE];
+        $entitySchema     = $entityDefinition[self::SCHEMA];
         if (isset($this->baseTableIdentifiers[$entitySchema ?? ''][$entityTable])) {
             return $this->baseTableIdentifiers[$entitySchema ?? ''][$entityTable];
         }
@@ -786,8 +833,8 @@ class RelationalTableGateway implements RelationalTableGatewayInterface, Hydrato
     public function getTableIdentifier($entity): TableIdentifier
     {
         $entityDefinition = $this->getEntityDefinition($this->getEntityClass($entity));
-        $entityTable = $entityDefinition[self::TABLE] . $this->getTableSuffix();
-        $entitySchema = $entityDefinition[self::SCHEMA];
+        $entityTable      = $entityDefinition[self::TABLE] . $this->getTableSuffix();
+        $entitySchema     = $entityDefinition[self::SCHEMA];
         if (isset($this->tableIdentifiers[$entitySchema ?? ''][$entityTable])) {
             return $this->tableIdentifiers[$entitySchema ?? ''][$entityTable];
         }

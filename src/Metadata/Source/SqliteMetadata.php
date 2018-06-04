@@ -2,7 +2,7 @@
 
 namespace Smtm\Zfx\Db\Metadata\Source;
 
-use Smtm\Zfx\Db\Metadata\Object;
+use Smtm\Zfx\Db\Metadata\Object as MetadataObject;
 use Zend\Db\Metadata\Source\SqliteMetadata as Zf_SqliteMetadata;
 
 class SqliteMetadata extends Zf_SqliteMetadata
@@ -42,7 +42,7 @@ class SqliteMetadata extends Zf_SqliteMetadata
 
         $info = $this->data['columns'][$schema][$table][$columnName];
 
-        $column = new Object\ColumnObject($columnName, $table, $schema);
+        $column = new MetadataObject\ColumnObject($columnName, $table, $schema);
         $props = [
             'ordinal_position', 'column_default', 'is_nullable',
             'data_type', 'character_maximum_length', 'character_octet_length',
@@ -104,7 +104,7 @@ class SqliteMetadata extends Zf_SqliteMetadata
         }
 
         $info = $this->data['constraints'][$schema][$table][$constraintName];
-        $constraint = new Object\ConstraintObject($constraintName, $table, $schema);
+        $constraint = new MetadataObject\ConstraintObject($constraintName, $table, $schema);
 
         foreach ([
                      'constraint_type'         => 'setType',

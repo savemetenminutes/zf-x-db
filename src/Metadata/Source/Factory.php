@@ -24,6 +24,8 @@ class Factory
         $platformName = $adapter->getPlatform()->getName();
 
         switch ($platformName) {
+            case 'MariaDBV10_2_7':
+                return new MariadbV10_2_7Metadata($adapter);
             case 'MySQL':
                 return new MysqlMetadata($adapter);
             case 'SQLServer':
